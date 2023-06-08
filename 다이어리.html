@@ -71,6 +71,7 @@
             height: 600px;
             background: lightcoral;
             position: relative;
+            overflow: hidden;
 
         }
 
@@ -100,8 +101,10 @@
             margin-top: 10px;
         }
     </style>
+    <script src="../js/lib.js"></script>
     <script src="./DayBox.js"></script>
     <script src="./DateBox.js"></script>
+    <script src="./Rect.js"></script>
     <script>
         let sel_yy, sel_mm, sel_dd, sel_icon, pic, detail1;//좌측 입력컴포넌트들
         let sel_yy2, sel_mm2, sel_dd2, sel_icon2, pic2, detail2;//우측 입력컴포넌트들
@@ -119,6 +122,14 @@
         
         //42개의 박스를 제어하기 위한 배열 선언
         let dateBoxArray=[];
+
+        //특정 날짜의 다이어리 내용을 기록한 json들을 모아놓을 배열 선언(오라클을 대신함)
+        let diaryArray=[];
+
+        //사각형 포인터의 목표지점
+        let targetX=-200;
+        let targetY=-200;
+        let rect;
 
         //select 박스에 날짜 채워넣기
         //sel 매개변수-연도 출력 대상 select박스의 id를 넘기면 됨
@@ -187,10 +198,16 @@
             //비워진 날짜 select 박스에는 실제 사용자가 선택한 월을 구성하는 총 날짜 수를 구하여 채워넣자
             let totalDate=getLastDateOfMonth();
             for (let i = 1; i <=totalDate; i++) {
+                //좌측 select 날짜
                 let op = document.createElement("option");
                 op.text = i;
                 op.value = i;
                 sel_dd.add(op);
+                //우측 select 날짜
+                let op2 = document.createElement("option");
+                op2.text = i;
+                op2.value = i;
+                sel_dd2.add(op2);
             }
             printNum();
         }
@@ -200,7 +217,7 @@
             let yy=nowDate.getFullYear();//년
             let mm=nowDate.getMonth();//월 0부터~
             //월을 화면에 출력할때는 ㄴ반드시 1을 더하자
-            title.innerText=yy+"년 "+(mm+1)+"월";
+            title.innerText=yy+"년 "+numString(mm+1)+"월";
         }
 
         //해당 월이  무슨 요일부터 시작하는지 반환해주는 함수
@@ -235,6 +252,9 @@
             createDate(sel_mm.value);
             printNum();
 
+            removeData();//기존 화면 초기화
+            loadData();//정보 불러오기
+
         }
 
         function next(){
@@ -247,6 +267,10 @@
             sel_mm.value=nowDate.getMonth()+1;
             createDate(sel_mm.value);
             printNum();
+
+            removeData();//기존 화면 초기화
+            loadData();//정보 불러오기
+
         }
 
         //일요일~토요일까지 7개의 박스 생성
@@ -261,7 +285,7 @@
                 let arr=new Array(7);
                 for(let i=0; i<7;i++){
                     //container,width,height,x,y,num,src,text
-                    let box=new DateBox(content,100,100,i*100,a*100,0,"","무");
+                    let box=new DateBox(content,100,100,i*100,a*100,nowDate.getFullYear(),nowDate.getMonth(),0,"","");
                     arr[i]=box;
                 }
                 dateBoxArray.push(arr);
@@ -283,12 +307,116 @@
                     if(count>=startDay && n<lastDate){
                         n++;   
                         dateBoxArray[a][i].span.innerText=n;
+                        //멤버변수에도 날짜 정보를 추가해 놓아야 추후 비교가 가능하다
+                        dateBoxArray[a][i].yy=nowDate.getFullYear();
+                        dateBoxArray[a][i].mm=nowDate.getMonth();
+                        dateBoxArray[a][i].dd=n;
                     }else{
                         dateBoxArray[a][i].span.innerText="";
                     }
                     count++;
                 }
             }
+        }
+
+        //다이어리를 출력하기 전에 기존의 자료들은 모두 제거
+        function removeData(){
+            //현재 보고있는 달력을 대상으로...
+            for(let a=0; a<dateBoxArray.length;a++){
+                for(let i=0; i<dateBoxArray[a].length;i++){
+                    //아이콘 관련
+                    dateBoxArray[a][i].src="";//정보
+                    dateBoxArray[a][i].icon.src="";//렌더링
+                    //내용관련
+                    dateBoxArray[a][i].text="";
+                    dateBoxArray[a][i].detail.innerText="";
+
+                }
+            }
+        }
+
+        //다이어리 기록 불러오기
+        function loadData(){
+            //날짜 수 만큼 반복하면서 각 날짜화 다이어리가 기록되어 있는 diaryArray의 요소들을
+            //일일이 비교하여, 연, 월, 일이 일치하는 경우 해당 셀에 렌더링 처리..
+            for(let a=0; a<dateBoxArray.length;a++){
+                for(let i=0; i<dateBoxArray[a].length;i++){
+                    //다이어리의 배열수 만큼
+                    for(let k=0; k<diaryArray.length;k++){
+                        //날짜 셀과 json 객체가 서로 보유한 yy, mm, dd를 비교하자
+                        if(nowDate.getFullYear()==diaryArray[k].yy 
+                        && nowDate.getMonth()==diaryArray[k].mm
+                        && dateBoxArray[a][i].dd==diaryArray[k].dd){
+                            //console.log(diaryArray[k].dd, "발견되었어");
+
+                            //아이콘 등장
+                            dateBoxArray[a][i].icon.src=diaryArray[k].src;
+                            //상세내용 등장
+                            dateBoxArray[a][i].detail.innerText=getStringOutOfRange(diaryArray[k].content,6);
+                        }
+                    }
+                }
+            }
+        }
+
+        //좌측 영역의 입력 내용들을 우측 다력에 반영하기
+        function regist(){
+            /*
+            한 날의 기록된 정보를 담기 위한 저장소인 json을 하나 생성한다.
+
+            */
+            let json={
+                "yy":nowDate.getFullYear(),
+                "mm":nowDate.getMonth(),
+                "dd": sel_dd.value,
+                "src":sel_icon.value,
+                "content": detail1.value
+            }
+            diaryArray.push(json);
+
+            removeData();//화면싹 지우고
+            loadData();//정보 불러오기
+        }
+
+        //사용자가 달력의 날자 박스를 선택하면 해당 날짜에 대한 다이어리 기록 정보를 우측 폼 영역에 반영하자
+        //매개변수의 값으로 DateBox 인스턴스가 저달된다.
+        function getContent(obj){
+            //console.log(obj);
+            //console.log("연도는",obj.yy);
+            //console.log("월은",obj.mm);
+            //console.log("일은",obj.dd);
+
+            //우리가 보유한 정보인 yy,mm,dd와 diaryArray에 들어 있는 json들을 비교하여
+            //같은 경우 우측 영역에 json에 들어있는 다이어리 정보를 출력
+            for(let i=0; i<diaryArray.length;i++){
+                let json=diaryArray[i];
+                if(json.yy==obj.yy && json.mm==obj.mm && json.dd==obj.dd){
+                    console.log(json.dd,"일 등록된 이이콘은", json.src,"내용은",json.content);
+                    //우측 영역 채워넣기
+                    sel_yy2.value=json.yy;//연도
+                    sel_mm2.value=json.mm+1;//월
+                    sel_dd2.value=json.dd;//일
+                    sel_icon2.value=json.src;//아이콘 select박스
+                    preview(pic2,json.src);//아이콘 미리보기
+                    detail2.value=json.content;//상세내용 
+                    
+                }
+            }
+
+            //포인터의 목표지점 설정하기
+            targetX=obj.x;
+            targetY=obj.y;
+            
+        }
+
+        //프로그램이 시작됨과 동시에 사각형 포인터를 이미 생성되어 있어야 한다.
+        function createRect(){
+            rect=new Rect(content,100,100,targetX,targetY,8,8);
+        }
+
+        function loop(){
+            rect.tick();
+            rect.render();
         }
 
         function init() {
@@ -333,6 +461,9 @@
             //날짜 생성
             createDateBox();
             printNum();//박스 생성 후에 호출한다
+
+            createRect();
+            setInterval("loop()",10);
         });
     </script>
 </head>
@@ -354,7 +485,7 @@
             </select>
             <img id="pic">
             <textarea id="detail1"></textarea>
-            <button>등록</button>
+            <button onClick="regist()">등록</button>
         </div>
         <div id="center">
             <div id="header">
